@@ -172,7 +172,7 @@ extern int Bsexp_tag_patt(void *x);
 
 extern void Bmatch_failure(void *v, char *fname, int line, int col);
 
-void *Barray(int n) {
+static void *Barray(int n) {
     data *r = (data *)alloc_array(n);
 
     for (int i = n - 1; i >= 0; i--) {
@@ -182,7 +182,7 @@ void *Barray(int n) {
     return r->contents;
 }
 
-void *BSexp(int n, int tag) {
+static void *BSexp(int n, int tag) {
     int fields_cnt = n;
     data *r = (data *)alloc_sexp(fields_cnt);
     ((sexp *)r)->tag = 0;
@@ -196,7 +196,7 @@ void *BSexp(int n, int tag) {
     return (int *)r->contents;
 }
 
-void *Bclosure(int n, void *entry) {
+static void *Bclosure(int n, void *entry) {
     data *r = (data *)alloc_closure(n + 1);
     ((void **)r->contents)[0] = entry;
 

@@ -1,8 +1,11 @@
 EXECUTABLE = src/lamac
-INSTALL ?= install -v
 MKDIR ?= mkdir
 
-.PHONY: regression-all
+.PHONY: build
+
+build:
+	$(MAKE) -C runtime
+	$(MAKE) -C interpreter
 
 regression-all: regression regression-expressions
 
@@ -15,7 +18,8 @@ clean:
 	$(MAKE) clean -C interpreter
 	$(MAKE) clean -C regression
 
-regression: interpreter
-	$(MAKE) -C runtime
-	$(MAKE) -C interpreter
+regression:
 	$(MAKE) clean check -C regression
+
+performance:
+	$(MAKE) clean check -C performance

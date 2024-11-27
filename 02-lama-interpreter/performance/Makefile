@@ -11,15 +11,16 @@ INTERPRETER=../interpreter/interpreter
 check: $(TESTS)
 
 $(TESTS): %: %.lama
-	@echo $@
+	@echo "Test: $@"
+	@echo ''
 	@$(LAMAC) -b $@.lama
-	@echo 'My interpreter'
+	@echo 'Bytecode interpreter'
 	@time $(INTERPRETER) $@.bc
 	@echo ''
-	@echo 'Source code interpreter'
+	@echo 'Original source code interpreter'
 	@time cat Sort.input | $(LAMAC) -i $<
 	@echo ''
-	@echo 'Stack machine'
+	@echo 'Original bytecode interpreter'
 	@time cat Sort.input | $(LAMAC) -s $<
 
 clean:
