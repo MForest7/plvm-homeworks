@@ -1,8 +1,0 @@
-var x;
-
-do
-  var n = read ();
-  x := n
-while n <= 0 od;
-
-write (x)
