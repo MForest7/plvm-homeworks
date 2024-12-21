@@ -1,5 +1,5 @@
 CCFLAGS=-m32 -O2
-CXXFLAGS=-m32 -O0 --std=c++20 -D_GLIBCXX_DEBUG -Iinclude
+CXXFLAGS=-m32 -O2 --std=c++20 -Iinclude
 CXX=clang++
 
 SRC=src

@@ -28,20 +28,22 @@ Perfomance test output:
 Test: Sort
 
 Bytecode interpreter
+Verification time: 0.085119ms
+Interpretation time: 2587.76ms
 
-real    0m2.654s
-user    0m2.642s
+real    0m2.590s
+user    0m2.578s
 sys     0m0.012s
 
 Original source code interpreter
 
-real    0m6.167s
-user    0m6.135s
-sys     0m0.033s
+real    0m5.992s
+user    0m5.964s
+sys     0m0.029s
 
 Original bytecode interpreter
 
-real    0m2.159s
-user    0m2.136s
-sys     0m0.024s
+real    0m2.265s
+user    0m2.237s
+sys     0m0.028s
 ```

@@ -53,7 +53,7 @@ public:
      * Returns a pointer after the instruction.
      */
     template <template <unsigned char, typename...> typename Functor, typename... Args> //, template <unsigned char opcode, typename... Args> typename (Functor>
-    char *read_inst(char *inst_ptr, Args... args) {
+    inline char *read_inst(char *inst_ptr, Args... args) {
         ip = inst_ptr;
         unsigned char x = read_byte(),
                       h = (x & 0xF0) >> 4,

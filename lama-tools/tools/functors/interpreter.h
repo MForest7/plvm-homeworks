@@ -11,35 +11,35 @@ char __interpreter_ip;
 
 template <unsigned char opcode, typename... Args>
 struct InterpreterFunctor {
-    void operator()(Args... args) {
+    inline void operator()(Args... args) {
         std::cout << "Interpreter for opcode " << (int)opcode << " not implemented" << std::endl;
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_Const, int> {
-    void operator()(int value) {
+    inline void operator()(int value) {
         vstack_push(BOX(value));
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_String, char *> {
-    void operator()(char *ptr) {
+    inline void operator()(char *ptr) {
         vstack_push((size_t)Bstring((void *)ptr));
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_SExp, char *, int> {
-    void operator()(char *tag, int n) {
+    inline void operator()(char *tag, int n) {
         vstack_push((size_t)BSexp(n, UNBOX(LtagHash(tag))));
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_StI> {
-    void operator()(char *tag, int n) {
+    inline void operator()(char *tag, int n) {
         size_t v = vstack_pop();
         *(size_t *)vstack_pop() = v;
         vstack_push(v);
@@ -48,7 +48,7 @@ struct InterpreterFunctor<Opcode_StI> {
 
 template <>
 struct InterpreterFunctor<Opcode_StA> {
-    void operator()(char *tag, int n) {
+    inline void operator()(char *tag, int n) {
         size_t *v = (size_t *)vstack_pop();
         size_t i = vstack_pop();
         size_t *x = (size_t *)vstack_pop();
@@ -59,7 +59,7 @@ struct InterpreterFunctor<Opcode_StA> {
 
 template <>
 struct InterpreterFunctor<Opcode_Jmp> {
-    void operator()(char *tag, int n) {
+    inline void operator()(char *tag, int n) {
         size_t v = vstack_pop();
         *(size_t *)vstack_pop() = v;
         vstack_push(v);

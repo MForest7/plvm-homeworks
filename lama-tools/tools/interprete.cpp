@@ -591,19 +591,10 @@ void interprete(char *file_name, bytefile *file, char *ip) {
 #endif // DEBUG_MODE
         CERR("Inst 0x%08x %d\n", (ip - file->code_ptr), (int)*ip);
 
-        interpreter.advance = Normal;
-        char *next = reader.read_inst<InterpreterFunctor>(ip);
-
-        switch (interpreter.advance) {
-        case Normal:
-            ip = next;
-            break;
-        case Jump:
+        ip = reader.read_inst<InterpreterFunctor>(ip);
+        if (interpreter.advance == Jump) [[unlikely]] {
             ip = interpreter.jump_target;
-            break;
-        default:
-            FAIL(1, "Unexpected ip advance");
-            break;
+            interpreter.advance = Normal;
         }
     } while (1);
 }
