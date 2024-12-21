@@ -62,7 +62,7 @@ table_t<bool> run() {
         }
     }
 
-    constexpr double threshold = 1.4;
+    constexpr double threshold = 2.0;
 
     table_t<bool> or_table;
     for (int spots = 2; spots < MAX_SPOTS; spots++) {
