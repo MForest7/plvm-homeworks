@@ -239,35 +239,35 @@ static inline void *Bclosure(int n, void *entry) {
 
 template <unsigned char opcode, typename... Args>
 struct InterpreterFunctor {
-    void operator()(Args... args) {
+    inline void operator()(Args... args) {
         ::std::cout << "Interpreter for opcode " << (int)opcode << " not implemented" << ::std::endl;
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_Const, int> {
-    void operator()(int value) {
+    inline void operator()(int value) {
         vstack_push(BOX(value));
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_String, char *> {
-    void operator()(char *ptr) {
+    inline void operator()(char *ptr) {
         vstack_push((size_t)Bstring((void *)ptr));
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_SExp, char *, int> {
-    void operator()(char *tag, int n) {
+    inline void operator()(char *tag, int n) {
         vstack_push((size_t)BSexp(n, UNBOX(LtagHash(tag))));
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_StI> {
-    void operator()() {
+    inline void operator()() {
         size_t v = vstack_pop();
         *(size_t *)vstack_pop() = v;
         vstack_push(v);
@@ -276,7 +276,7 @@ struct InterpreterFunctor<Opcode_StI> {
 
 template <>
 struct InterpreterFunctor<Opcode_StA> {
-    void operator()() {
+    inline void operator()() {
         size_t *v = (size_t *)vstack_pop();
         size_t i = vstack_pop();
         size_t *x = (size_t *)vstack_pop();
@@ -287,7 +287,7 @@ struct InterpreterFunctor<Opcode_StA> {
 
 template <>
 struct InterpreterFunctor<Opcode_Jmp, int> {
-    void operator()(int target) {
+    inline void operator()(int target) {
         char *dst = interpreter.file->code_ptr + target;
         interpreter.advance = Jump;
         interpreter.jump_target = dst;
@@ -296,7 +296,7 @@ struct InterpreterFunctor<Opcode_Jmp, int> {
 
 template <>
 struct InterpreterFunctor<Opcode_End> {
-    void operator()() {
+    inline void operator()() {
         interpreter.advance = Jump;
         interpreter.jump_target = cstack_end();
     }
@@ -304,7 +304,7 @@ struct InterpreterFunctor<Opcode_End> {
 
 template <>
 struct InterpreterFunctor<Opcode_Ret> {
-    void operator()() {
+    inline void operator()() {
         interpreter.advance = Jump;
         interpreter.jump_target = cstack_end();
     }
@@ -312,21 +312,21 @@ struct InterpreterFunctor<Opcode_Ret> {
 
 template <>
 struct InterpreterFunctor<Opcode_Drop> {
-    void operator()() {
+    inline void operator()() {
         vstack_pop();
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_Dup> {
-    void operator()() {
+    inline void operator()() {
         vstack_push(vstack_top());
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_Swap> {
-    void operator()() {
+    inline void operator()() {
         size_t fst = vstack_pop();
         size_t snd = vstack_pop();
         vstack_push(fst);
@@ -336,7 +336,7 @@ struct InterpreterFunctor<Opcode_Swap> {
 
 template <>
 struct InterpreterFunctor<Opcode_Elem> {
-    void operator()() {
+    inline void operator()() {
         size_t i = vstack_pop();
         size_t *p = (size_t *)vstack_pop();
         vstack_push((size_t)Belem(p, i));
@@ -345,7 +345,7 @@ struct InterpreterFunctor<Opcode_Elem> {
 
 template <>
 struct InterpreterFunctor<Opcode_CJmpZ, int> {
-    void operator()(int target) {
+    inline void operator()(int target) {
         char *dst = interpreter.file->code_ptr + target;
         if (UNBOX(vstack_pop()) == 0) {
             interpreter.advance = Jump;
@@ -356,7 +356,7 @@ struct InterpreterFunctor<Opcode_CJmpZ, int> {
 
 template <>
 struct InterpreterFunctor<Opcode_CJmpNZ, int> {
-    void operator()(int target) {
+    inline void operator()(int target) {
         char *dst = interpreter.file->code_ptr + target;
         if (UNBOX(vstack_pop()) != 0) {
             interpreter.advance = Jump;
@@ -367,21 +367,21 @@ struct InterpreterFunctor<Opcode_CJmpNZ, int> {
 
 template <>
 struct InterpreterFunctor<Opcode_Begin, int, int> {
-    void operator()(int args_count, int locals_count) {
+    inline void operator()(int args_count, int locals_count) {
         cstack_alloc(locals_count);
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_CBegin, int, int> {
-    void operator()(int args_count, int locals_count) {
+    inline void operator()(int args_count, int locals_count) {
         cstack_alloc(locals_count);
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_Closure, int, ::std::vector<LocationEntry>> {
-    void operator()(int offset, ::std::vector<LocationEntry> locations) {
+    inline void operator()(int offset, ::std::vector<LocationEntry> locations) {
         for (const auto &location : locations) {
             vstack_push(*loc(location.kind, location.index));
         }
@@ -391,7 +391,7 @@ struct InterpreterFunctor<Opcode_Closure, int, ::std::vector<LocationEntry>> {
 
 template <>
 struct InterpreterFunctor<Opcode_CallC, char *, int> {
-    void operator()(char *return_ip, int args_count) {
+    inline void operator()(char *return_ip, int args_count) {
         char *entry = interpreter.file->code_ptr + *(int *)vstack_kth_from_end(args_count);
         cstack_call(return_ip, args_count, true);
         interpreter.advance = Jump;
@@ -401,7 +401,7 @@ struct InterpreterFunctor<Opcode_CallC, char *, int> {
 
 template <>
 struct InterpreterFunctor<Opcode_Call, char *, int, int> {
-    void operator()(char *return_ip, int offset, int args_count) {
+    inline void operator()(char *return_ip, int offset, int args_count) {
         char *dst = interpreter.file->code_ptr + offset;
         cstack_call(return_ip, args_count, false);
         interpreter.advance = Jump;
@@ -411,7 +411,7 @@ struct InterpreterFunctor<Opcode_Call, char *, int, int> {
 
 template <>
 struct InterpreterFunctor<Opcode_Tag, char *, int> {
-    void operator()(char *s, int args) {
+    inline void operator()(char *s, int args) {
         size_t tag = Btag((void *)vstack_pop(), LtagHash((char *)s), BOX(args));
         vstack_push(tag);
     }
@@ -419,7 +419,7 @@ struct InterpreterFunctor<Opcode_Tag, char *, int> {
 
 template <>
 struct InterpreterFunctor<Opcode_Array, int> {
-    void operator()(int n) {
+    inline void operator()(int n) {
         size_t arr = (size_t)Barray_patt((void *)vstack_pop(), BOX(n));
         vstack_push(arr);
     }
@@ -427,20 +427,20 @@ struct InterpreterFunctor<Opcode_Array, int> {
 
 template <>
 struct InterpreterFunctor<Opcode_Fail, int, int> {
-    void operator()(int line, int col) {
+    inline void operator()(int line, int col) {
         Bmatch_failure((void *)vstack_pop(), interpreter.file_name, line, col);
     }
 };
 
 template <>
 struct InterpreterFunctor<Opcode_Line, int> {
-    void operator()(int line) {}
+    inline void operator()(int line) {}
 };
 
 template <unsigned char opcode>
     requires((opcode >> 4) == HOpcode_Binop)
 struct InterpreterFunctor<opcode> {
-    void operator()() {
+    inline void operator()() {
         int rhv = UNBOX(vstack_pop());
         int lhv = UNBOX(vstack_pop());
         int res;
@@ -460,7 +460,7 @@ struct InterpreterFunctor<opcode> {
 template <unsigned char opcode>
     requires((opcode >> 4) == HOpcode_Ld)
 struct InterpreterFunctor<opcode, int> {
-    void operator()(int index) {
+    inline void operator()(int index) {
         size_t *addr = loc(opcode & 0x0F, index);
         vstack_push(*addr);
     }
@@ -469,7 +469,7 @@ struct InterpreterFunctor<opcode, int> {
 template <unsigned char opcode>
     requires((opcode >> 4) == HOpcode_LdA)
 struct InterpreterFunctor<opcode, int> {
-    void operator()(int index) {
+    inline void operator()(int index) {
         size_t *addr = loc(opcode & 0x0F, index);
         vstack_push((size_t)addr);
         vstack_push((size_t)addr);
@@ -479,7 +479,7 @@ struct InterpreterFunctor<opcode, int> {
 template <unsigned char opcode>
     requires((opcode >> 4) == HOpcode_St)
 struct InterpreterFunctor<opcode, int> {
-    void operator()(int index) {
+    inline void operator()(int index) {
         *loc(opcode & 0x0F, index) = vstack_top();
     }
 };
@@ -487,7 +487,7 @@ struct InterpreterFunctor<opcode, int> {
 template <unsigned char opcode>
     requires((opcode >> 4) == HOpcode_Patt)
 struct InterpreterFunctor<opcode> {
-    void operator()() {
+    inline void operator()() {
         void *x = (void *)vstack_pop();
         switch (opcode & 0x0F) {
         case Pattern_String: {
@@ -529,7 +529,7 @@ struct InterpreterFunctor<opcode> {
 template <unsigned char opcode>
     requires((opcode >> 4) == HOpcode_LCall && (opcode & 0x0F) != LCall_Barray)
 struct InterpreterFunctor<opcode> {
-    void operator()() {
+    inline void operator()() {
         switch (opcode & 0x0F) {
         case LCall_Lread:
             vstack_push(Lread());
@@ -551,7 +551,7 @@ struct InterpreterFunctor<opcode> {
 
 template <>
 struct InterpreterFunctor<COMPOSED(HOpcode_LCall, LCall_Barray), int> {
-    void operator()(int n) {
+    inline void operator()(int n) {
         vstack_push((size_t)Barray(n));
     }
 };
@@ -559,7 +559,7 @@ struct InterpreterFunctor<COMPOSED(HOpcode_LCall, LCall_Barray), int> {
 template <unsigned char opcode>
     requires((opcode >> 4) == HOpcode_Stop)
 struct InterpreterFunctor<opcode> {
-    void operator()() {
+    inline void operator()() {
         __shutdown();
         exit(0);
     }
