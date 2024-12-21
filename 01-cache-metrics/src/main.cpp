@@ -23,9 +23,9 @@ volatile ptrdiff_t *save;
 double lap() {
     ptrdiff_t *cursor = jump;
     REPEAT_256(STEP)
-    auto start_time = std::chrono::high_resolution_clock::now();
+    auto start_time = std::chrono::steady_clock::now();
     REPEAT_1024(STEP)
-    auto end_time = std::chrono::high_resolution_clock::now();
+    auto end_time = std::chrono::steady_clock::now();
 
     save = cursor;
 
@@ -62,7 +62,7 @@ table_t<bool> run() {
         }
     }
 
-    constexpr double threshold = 1.2;
+    constexpr double threshold = 1.4;
 
     table_t<bool> or_table;
     for (int spots = 2; spots < MAX_SPOTS; spots++) {
@@ -97,7 +97,7 @@ int main() {
         }
     }
 
-    const int runs = 50;
+    const int runs = 100;
 
     for (int i = 0; i < runs; i++) {
         auto cur = run();
@@ -109,18 +109,22 @@ int main() {
     }
 
     const double threshold = 0.8;
-    size_t capacity = std::numeric_limits<size_t>::max(), associativity = 0;
+    size_t capacity = std::numeric_limits<size_t>::max();
+    size_t associativity = std::numeric_limits<size_t>::max();
     for (int r = 2; r < MAX_SPOTS; r++) {
+        std::cout << std::setw(5) << r - 1 << ": ";
         for (int c = 1; c < MAX_STRIDE_I; c++) {
+            std::cout << std::setw(5) << stat[r][c];
             if (stat[r][c] > runs * threshold) {
                 size_t candidate_associativity = r - 1;
                 size_t candidate_capacity = (1 << c) * candidate_associativity * sizeof(ptrdiff_t);
-                if (candidate_capacity < capacity) {
+                if (std::pair{candidate_capacity, candidate_associativity} < std::pair{capacity, associativity}) {
                     capacity = candidate_capacity;
                     associativity = candidate_associativity;
                 }
             }
         }
+        std::cout << std::endl;
     }
 
     std::vector<int> cache_line_stat(8, 0);
