@@ -59,8 +59,12 @@ table_t<bool> run() {
             if (spots * stride > ARRAY_SIZE)
                 continue;
             table[spots][stride_i] = run_with_stride(stride, spots);
+
+            std::cout << std::setw(10) << std::fixed << std::setprecision(2) << table[spots][stride_i];
         }
+        std::cout << std::endl;
     }
+    std::cout << std::endl;
 
     constexpr double threshold = 2.0;
 
