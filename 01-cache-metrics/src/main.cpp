@@ -116,7 +116,7 @@ int main() {
 
     std::vector<Candidate> candidates;
 
-    const double threshold = 0.65;
+    const double threshold = 0.3;
     size_t capacity = std::numeric_limits<size_t>::max();
     size_t associativity = std::numeric_limits<size_t>::max();
 
