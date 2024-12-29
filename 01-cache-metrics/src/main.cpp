@@ -108,16 +108,33 @@ int main() {
         }
     }
 
+    struct Candidate {
+        int r, c;
+        size_t assoc, cap;
+    };
+
+    std::vector<Candidate> candidates;
+
     const double threshold = 0.8;
     size_t capacity = std::numeric_limits<size_t>::max();
     size_t associativity = std::numeric_limits<size_t>::max();
+
+    std::cout << "#####  ";
+    for (int c = 1; c < MAX_STRIDE_I; c++) {
+        std::cout << std::setw(5) << c;
+    }
+    std::cout << std::endl;
+
     for (int r = 2; r < MAX_SPOTS; r++) {
-        std::cout << std::setw(5) << r - 1 << ": ";
+        std::cout << std::setw(5) << r << ": ";
         for (int c = 1; c < MAX_STRIDE_I; c++) {
             std::cout << std::setw(5) << stat[r][c];
             if (stat[r][c] > runs * threshold) {
+                // std::cout << "candidate " << r << " " << c << " ";
                 size_t candidate_associativity = r - 1;
                 size_t candidate_capacity = (1 << c) * candidate_associativity * sizeof(ptrdiff_t);
+                candidates.push_back(Candidate{r, c, candidate_associativity, candidate_capacity});
+                // std::cout << candidate_capacity << " " << candidate_associativity << std::endl;
                 if (std::pair{candidate_capacity, candidate_associativity} < std::pair{capacity, associativity}) {
                     capacity = candidate_capacity;
                     associativity = candidate_associativity;
@@ -125,6 +142,11 @@ int main() {
             }
         }
         std::cout << std::endl;
+    }
+
+    std::cout << "Candidates: ";
+    for (auto &c : candidates) {
+        std::cout << " r=" << c.r << " c=" << c.c << " assoc=" << c.assoc << " cap=" << c.cap << std::endl;
     }
 
     std::vector<int> cache_line_stat(8, 0);
