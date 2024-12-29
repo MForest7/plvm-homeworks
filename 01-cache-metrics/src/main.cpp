@@ -58,15 +58,12 @@ table_t<bool> run() {
             ptrdiff_t stride = 1 << stride_i;
             if (spots * stride > ARRAY_SIZE)
                 continue;
+            // std::cin >> table[spots][stride_i];
             table[spots][stride_i] = run_with_stride(stride, spots);
-
-            std::cout << std::setw(10) << std::fixed << std::setprecision(2) << table[spots][stride_i];
         }
-        std::cout << std::endl;
     }
-    std::cout << std::endl;
 
-    constexpr double threshold = 2.0;
+    constexpr double threshold = 1.2;
 
     table_t<bool> or_table;
     for (int spots = 2; spots < MAX_SPOTS; spots++) {
@@ -119,7 +116,7 @@ int main() {
 
     std::vector<Candidate> candidates;
 
-    const double threshold = 0.8;
+    const double threshold = 0.65;
     size_t capacity = std::numeric_limits<size_t>::max();
     size_t associativity = std::numeric_limits<size_t>::max();
 
