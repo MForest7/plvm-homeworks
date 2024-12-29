@@ -49,6 +49,8 @@ constexpr size_t MAX_STRIDE_I = 20;
 template <typename T>
 using table_t = std::array<std::array<T, MAX_STRIDE_I>, MAX_SPOTS>;
 
+table_t<double> avg_time;
+
 table_t<bool> run() {
     table_t<double> table;
 
@@ -58,8 +60,7 @@ table_t<bool> run() {
             ptrdiff_t stride = 1 << stride_i;
             if (spots * stride > ARRAY_SIZE)
                 continue;
-            // std::cin >> table[spots][stride_i];
-            table[spots][stride_i] = run_with_stride(stride, spots);
+            avg_time[spots][stride_i] += table[spots][stride_i] = run_with_stride(stride, spots);
         }
     }
 
@@ -120,6 +121,14 @@ int main() {
     size_t capacity = std::numeric_limits<size_t>::max();
     size_t associativity = std::numeric_limits<size_t>::max();
 
+    for (int r = 1; r < MAX_SPOTS; r++) {
+        for (int c = 1; c < MAX_STRIDE_I; c++) {
+            std::cout << std::setw(9) << std::fixed << std::setprecision(2) << avg_time[r][c] / runs;
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+
     std::cout << "#####  ";
     for (int c = 1; c < MAX_STRIDE_I; c++) {
         std::cout << std::setw(5) << c;
@@ -131,11 +140,9 @@ int main() {
         for (int c = 1; c < MAX_STRIDE_I; c++) {
             std::cout << std::setw(5) << stat[r][c];
             if (stat[r][c] > runs * threshold) {
-                // std::cout << "candidate " << r << " " << c << " ";
                 size_t candidate_associativity = r - 1;
                 size_t candidate_capacity = (1 << c) * candidate_associativity * sizeof(ptrdiff_t);
                 candidates.push_back(Candidate{r, c, candidate_associativity, candidate_capacity});
-                // std::cout << candidate_capacity << " " << candidate_associativity << std::endl;
                 if (std::pair{candidate_capacity, candidate_associativity} < std::pair{capacity, associativity}) {
                     capacity = candidate_capacity;
                     associativity = candidate_associativity;
