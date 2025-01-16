@@ -10,20 +10,33 @@
 #include <string.h>
 #include <vector>
 
-inline std::vector<bool> mark_reachable_instructions(bytefile *file, char *entry) {
-    std::queue<char *> q;
-    q.push(entry);
+namespace {
+
+static inline std::vector<bool> mark_reachable_instructions(
+    const bytefile *file,
+    const std::vector<const char *> &entrypoints) {
+
+    std::cout << "File ptr: " << (long)file << std::endl;
+    std::cout << "Code ptr: " << (long)file->code_ptr << std::endl;
+    std::cout << "File size: " << file->size << std::endl;
+    std::cout << "Code size: " << get_code_size(file) << std::endl;
+
+    std::queue<const char *> q;
     std::vector<bool> visited(get_code_size(file));
-    visited[entry - file->code_ptr] = true;
+    for (const char *entry : entrypoints) {
+        q.push(entry);
+        visited[entry - file->code_ptr] = true;
+    }
+
     InstReader reader(file);
 
     while (!q.empty()) {
-        char *ip = q.front();
+        const char *ip = q.front();
         q.pop();
 
-        std::vector<char *> successors;
-        char *next = reader.read_inst<DefaultFunctor>(ip);
-        reader.read_inst<SuccessorsFunctor, char *, char *, std::vector<char *> *>(ip, file->code_ptr, next, &successors);
+        std::vector<const char *> successors;
+        const char *next = reader.read_inst<DefaultFunctor>(ip);
+        reader.read_inst<SuccessorsFunctor, const char *, const char *, std::vector<const char *> *>(ip, file->code_ptr, next, &successors);
         for (const char *s : successors) {
             if (!visited[s - file->code_ptr]) {
                 visited[s - file->code_ptr] = true;
@@ -35,15 +48,19 @@ inline std::vector<bool> mark_reachable_instructions(bytefile *file, char *entry
     return visited;
 }
 
-inline void mark_jumps(bytefile *file, char *entry, std::vector<bool> *jump, std::vector<bool> *label) {
-    char *code_begin = file->code_ptr;
-    char *code_end = file->code_ptr + get_code_size(file);
+static inline void mark_jumps(
+    const bytefile *file,
+    const std::vector<const char *> &entry,
+    std::vector<bool> *jump,
+    std::vector<bool> *label) {
+    const char *code_begin = file->code_ptr;
+    const char *code_end = file->code_ptr + get_code_size(file);
 
     jump->assign(code_end - code_begin, false);
     label->assign(code_end - code_begin, false);
     InstReader reader(file);
 
-    for (char *ip = code_begin; ip != code_end;) {
+    for (const char *ip = code_begin; ip != code_end;) {
         unsigned char opcode = *ip;
         switch (opcode) {
         case Opcode_Jmp:
@@ -59,9 +76,9 @@ inline void mark_jumps(bytefile *file, char *entry, std::vector<bool> *jump, std
             break;
         }
 
-        std::vector<char *> successors;
-        char *next = reader.read_inst<DefaultFunctor>(ip);
-        reader.read_inst<SuccessorsFunctor, char *, char *, std::vector<char *> *>(ip, file->code_ptr, next, &successors);
+        std::vector<const char *> successors;
+        const char *next = reader.read_inst<DefaultFunctor>(ip);
+        reader.read_inst<SuccessorsFunctor, const char *, const char *, std::vector<const char *> *>(ip, file->code_ptr, next, &successors);
         for (const char *s : successors) {
             if (next != s) {
                 label->at(s - code_begin) = true;
@@ -72,11 +89,11 @@ inline void mark_jumps(bytefile *file, char *entry, std::vector<bool> *jump, std
 }
 
 struct Idiom {
-    char *begin;
-    char *end;
+    const char *begin;
+    const char *end;
 };
 
-int compare_idioms(const Idiom &fst, const Idiom &snd) {
+static int compare_idioms(const Idiom &fst, const Idiom &snd) {
     for (size_t i = 0; fst.begin + i != fst.end && snd.begin + i != snd.end; i++) {
         if (fst.begin[i] != snd.begin[i])
             return (int)(fst.begin[i]) - (int)(snd.begin[i]);
@@ -94,35 +111,33 @@ struct IdiomGroup {
     size_t count;
 };
 
-int main(int argc, char *argv[]) {
-    bytefile *file = read_file(argv[1]);
+} // namespace
 
-    std::vector<ShortIdiomGroup> one_byte_idioms(1 << 8, {nullptr, 0});
-    std::vector<ShortIdiomGroup> two_byte_idioms(1 << 16, {nullptr, 0});
+int main(int argc, const char *argv[]) {
+    const bytefile *file = read_file(argv[1]);
+
+    std::vector<ShortIdiomGroup> one_byte_idioms(1 << 8, {{nullptr, nullptr}, 0});
+    std::vector<ShortIdiomGroup> two_byte_idioms(1 << 16, {{nullptr, nullptr}, 0});
     std::vector<Idiom> idioms;
 
-    char *entry = entrypoint(file);
-    if (entry == nullptr) {
-        std::cerr << "Error: main not found" << std::endl;
-        return 1;
-    }
+    auto entrypoints = get_entrypoints(file);
 
-    std::vector<bool> reachable = mark_reachable_instructions(file, entry);
+    std::vector<bool> reachable = mark_reachable_instructions(file, entrypoints);
     std::vector<bool> jump, label;
-    mark_jumps(file, entry, &jump, &label);
+    mark_jumps(file, entrypoints, &jump, &label);
 
     InstReader reader(file);
-    char *code_begin = file->code_ptr;
-    char *code_end = file->code_ptr + get_code_size(file);
+    const char *code_begin = file->code_ptr;
+    const char *code_end = file->code_ptr + get_code_size(file);
 
-    for (char *ip = code_begin, *prev = nullptr; ip != code_end;) {
+    for (const char *ip = code_begin, *prev = nullptr; ip != code_end;) {
         if (!reachable[ip - code_begin]) {
             prev = nullptr;
             ip = reader.read_inst<DefaultFunctor>(ip);
             continue;
         }
 
-        char *next = reader.read_inst<DefaultFunctor>(ip);
+        const char *next = reader.read_inst<DefaultFunctor>(ip);
         if (prev != nullptr && !label[ip - code_begin]) {
             if (next - prev == 2) {
                 int index = ((int)(*prev) << 8) | (int)(*ip);
@@ -176,7 +191,7 @@ int main(int argc, char *argv[]) {
     size_t index = 0;
     for (const auto &[idiom, count] : idiom_groups) {
         std::cout << "#" << ++index << ": " << count << " times";
-        for (char *ip = idiom->begin; ip != idiom->end;) {
+        for (const char *ip = idiom->begin; ip != idiom->end;) {
             std::cout << "\n\t";
             ip = reader.read_inst<PrinterFunctor, std::ostream &>(ip, std::cout);
         }

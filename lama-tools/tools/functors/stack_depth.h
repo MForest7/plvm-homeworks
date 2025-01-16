@@ -203,23 +203,23 @@ struct StackDepthFunctor<Opcode_Line, int> {
 };
 
 template <>
-struct StackDepthFunctor<Opcode_CallC, char *, int> {
+struct StackDepthFunctor<Opcode_CallC, const char *, int> {
     StackLayout *layout;
-    inline void operator()(char *, int) {}
+    inline void operator()(const char *, int) {}
 };
 
 template <>
-struct StackDepthFunctor<Opcode_Call, char *, int, int> {
+struct StackDepthFunctor<Opcode_Call, const char *, int, int> {
     StackLayout *layout;
-    inline void operator()(char *, int, int) {
+    inline void operator()(const char *, int, int) {
         layout->locals += 1;
     }
 };
 
 template <>
-struct StackDepthFunctor<Opcode_Tag, char *, int> {
+struct StackDepthFunctor<Opcode_Tag, const char *, int> {
     StackLayout *layout;
-    inline void operator()(char *, int) {}
+    inline void operator()(const char *, int) {}
 };
 
 template <>

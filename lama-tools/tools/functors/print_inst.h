@@ -126,9 +126,9 @@ PRINT_OFFSET(Opcode_CJmpZ)
 #undef PRINT_OFFSET
 
 template <>
-struct PrinterFunctor<SINGLE(Opcode_Call), char *, int, int> {
+struct PrinterFunctor<SINGLE(Opcode_Call), const char *, int, int> {
     std::ostream &out;
-    inline void operator()(char *, int offset, int argc) {
+    inline void operator()(const char *, int offset, int argc) {
         out << opcode_to_string<Opcode_Call>() << "\t"
             << "0x" << std::hex << offset << std::dec << " "
             << argc;
@@ -136,9 +136,9 @@ struct PrinterFunctor<SINGLE(Opcode_Call), char *, int, int> {
 };
 
 template <>
-struct PrinterFunctor<SINGLE(Opcode_CallC), char *, int, int> {
+struct PrinterFunctor<SINGLE(Opcode_CallC), const char *, int, int> {
     std::ostream &out;
-    inline void operator()(char *, int argc) {
+    inline void operator()(const char *, int argc) {
         out << opcode_to_string<Opcode_CallC>() << "\t" << argc;
     }
 };

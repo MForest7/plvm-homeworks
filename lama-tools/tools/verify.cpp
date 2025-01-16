@@ -17,7 +17,7 @@
 namespace {
 
 struct ClosureEntry {
-    char *offset;
+    const char *offset;
     int captured;
 };
 
@@ -25,7 +25,7 @@ struct ClosureEntry {
  * Set parameter `capture` to a non-negative integer to verify closure.
  * Returns minimal possible number of arguments in the virtual stack before the call.
  */
-int verify_function(bytefile *file, char *begin, int captured = -1) {
+int verify_function(const bytefile *file, const char *begin, int captured = -1) {
     std::vector<int> jumps;
     StackLayout layout{
         .globals = file->global_area_size,
@@ -39,7 +39,7 @@ int verify_function(bytefile *file, char *begin, int captured = -1) {
     InstReader reader(file);
 
     int size = 2;
-    for (char *ip = begin; *ip != Opcode_End;) {
+    for (const char *ip = begin; *ip != Opcode_End;) {
         ip = reader.read_inst<DefaultFunctor>(ip);
         size = ip - begin + 1;
         if (*ip == Opcode_Begin || *ip == Opcode_CBegin) {
@@ -50,21 +50,21 @@ int verify_function(bytefile *file, char *begin, int captured = -1) {
     std::vector<bool> visited(size, false);
     visited[0] = true;
 
-    std::queue<std::pair<char *, StackLayout>> q;
+    std::queue<std::pair<const char *, StackLayout>> q;
     q.push({begin, layout});
 
     while (!q.empty()) {
-        char *ip = q.front().first;
+        const char *ip = q.front().first;
         StackLayout layout = q.front().second;
         q.pop();
 
-        char *next = reader.read_inst<StackDepthFunctor>(ip, &layout);
+        const char *next = reader.read_inst<StackDepthFunctor>(ip, &layout);
 
         if (layout.locals < 0) {
             FAIL(1, "Stack underflow at offset 0x%.8x", ip - file->code_ptr);
         }
 
-        std::vector<char *> successors;
+        std::vector<const char *> successors;
         reader.read_inst<SuccessorsFunctor>(ip, file->code_ptr, next, &successors);
         for (const char *s : successors) {
             if (begin <= s && s < begin + size) {
@@ -101,7 +101,10 @@ struct GetCallOffset<Opcode_Call, char *, int, int> {
     }
 };
 
-void verify_calls(bytefile *file, char *begin, const std::unordered_map<int, int> &min_args_count) {
+void verify_calls(
+    const bytefile *file,
+    const char *begin,
+    const std::unordered_map<int, int> &min_args_count) {
     std::vector<int> jumps;
     StackLayout layout{
         .globals = file->global_area_size,
@@ -115,7 +118,7 @@ void verify_calls(bytefile *file, char *begin, const std::unordered_map<int, int
     InstReader reader(file);
 
     int size = 1;
-    for (char *ip = begin; *ip != Opcode_End;) {
+    for (const char *ip = begin; *ip != Opcode_End;) {
         ip = reader.read_inst<DefaultFunctor>(ip);
         size = ip - begin;
     }
@@ -123,11 +126,11 @@ void verify_calls(bytefile *file, char *begin, const std::unordered_map<int, int
     std::vector<bool> visited(size, false);
     visited[0] = true;
 
-    std::queue<std::pair<char *, StackLayout>> q;
+    std::queue<std::pair<const char *, StackLayout>> q;
     q.push({begin, layout});
 
     while (!q.empty()) {
-        char *ip = q.front().first;
+        const char *ip = q.front().first;
         StackLayout layout = q.front().second;
         q.pop();
 
@@ -139,8 +142,8 @@ void verify_calls(bytefile *file, char *begin, const std::unordered_map<int, int
             }
         }
 
-        char *next = reader.read_inst<StackDepthFunctor>(ip, &layout);
-        std::vector<char *> successors;
+        const char *next = reader.read_inst<StackDepthFunctor>(ip, &layout);
+        std::vector<const char *> successors;
         reader.read_inst<SuccessorsFunctor>(ip, file->code_ptr, next, &successors);
         for (const char *s : successors) {
             if (begin <= s && s < begin + size) {
@@ -155,21 +158,21 @@ void verify_calls(bytefile *file, char *begin, const std::unordered_map<int, int
 
 template <unsigned char opcode, typename... Args>
 struct PushCallOffset {
-    std::vector<char *> *begins;
+    std::vector<const char *> *begins;
     std::vector<ClosureEntry> *cbegins;
-    char *code_ptr;
+    const char *code_ptr;
 
     void operator()(Args...) {}
 };
 
 template <>
-struct PushCallOffset<Opcode_Call, char *, int, int> {
-    std::vector<char *> *begins;
+struct PushCallOffset<Opcode_Call, const char *, int, int> {
+    std::vector<const char *> *begins;
     std::vector<ClosureEntry> *cbegins;
-    char *code_ptr;
+    const char *code_ptr;
 
-    void operator()(char *, int offset, int args) {
-        char *begin = code_ptr + offset;
+    void operator()(const char *, int offset, int args) {
+        const char *begin = code_ptr + offset;
         if (*begin != Opcode_Begin) {
             FAIL(1, "Call offset 0x%.8x points to opcode %d, %d expected",
                  (unsigned int)begin, *begin, Opcode_Begin);
@@ -180,12 +183,12 @@ struct PushCallOffset<Opcode_Call, char *, int, int> {
 
 template <>
 struct PushCallOffset<Opcode_Closure, int, std::vector<LocationEntry>> {
-    std::vector<char *> *begins;
+    std::vector<const char *> *begins;
     std::vector<ClosureEntry> *cbegins;
-    char *code_ptr;
+    const char *code_ptr;
 
-    void operator()(int offset, std::vector<LocationEntry> capture) {
-        char *begin = code_ptr + offset;
+    void operator()(int offset, const std::vector<LocationEntry> &capture) {
+        const char *begin = code_ptr + offset;
         if (*begin != Opcode_CBegin && *begin != Opcode_Begin) {
             FAIL(1, "Closure offset 0x%.8x points to opcode %d, %d or %d expected",
                  (unsigned int)begin, *begin, Opcode_Begin, Opcode_CBegin);
@@ -196,23 +199,25 @@ struct PushCallOffset<Opcode_Closure, int, std::vector<LocationEntry>> {
 
 } // namespace
 
-void verify_reachable_instructions(bytefile *file, char *entry) {
-    std::queue<char *> q;
-    q.push(entry);
+void verify_reachable_instructions(const bytefile *file, const std::vector<const char *> &entrypoints) {
+    std::queue<const char *> q;
     std::vector<bool> visited(get_code_size(file));
-    visited[entry - file->code_ptr] = true;
+    std::vector<const char *> begins;
+    std::vector<ClosureEntry> cbegins;
+
+    for (const char *entrypoint : entrypoints) {
+        q.push(entrypoint);
+        visited[entrypoint - file->code_ptr] = true;
+        begins.push_back(entrypoint);
+    }
     InstReader reader(file);
 
-    std::vector<char *> begins;
-    std::vector<ClosureEntry> cbegins;
-    begins.push_back(entry);
-
     while (!q.empty()) {
-        char *ip = q.front();
+        const char *ip = q.front();
         q.pop();
 
-        std::vector<char *> successors;
-        char *next = reader.read_inst<PushCallOffset>(ip, &begins, &cbegins, file->code_ptr);
+        std::vector<const char *> successors;
+        const char *next = reader.read_inst<PushCallOffset>(ip, &begins, &cbegins, file->code_ptr);
         reader.read_inst<SuccessorsFunctor>(ip, file->code_ptr, next, &successors);
         for (const char *s : successors) {
             if (!visited[s - file->code_ptr]) {
@@ -230,7 +235,7 @@ void verify_reachable_instructions(bytefile *file, char *entry) {
         min_args_count[(int)cl.offset] = verify_function(file, cl.offset, cl.captured);
     }
 
-    for (char *begin : begins) {
+    for (const char *begin : begins) {
         verify_calls(file, begin, min_args_count);
     }
     for (const ClosureEntry &cl : cbegins) {

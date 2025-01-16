@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <vector>
+
 /* The unpacked representation of bytecode file */
 typedef struct {
     int size;
@@ -20,19 +22,19 @@ typedef struct {
 } bytefile;
 
 /* Reads a binary bytecode file by name and unpacks it */
-bytefile *read_file(char *fname);
+bytefile *read_file(const char *fname);
 
 /* Gets a string from a string table by an index */
-char *get_string(bytefile *f, int pos);
+const char *get_string(const bytefile *f, int pos);
 
 /* Gets a name for a public symbol */
-char *get_public_name(bytefile *f, int i);
+const char *get_public_name(const bytefile *f, int i);
 
 /* Gets an offset for a publie symbol */
-int get_public_offset(bytefile *f, int i);
+int get_public_offset(const bytefile *f, int i);
 
-int get_code_size(bytefile *f);
+int get_code_size(const bytefile *f);
 
-char *entrypoint(bytefile *file);
+std::vector<const char *> get_entrypoints(const bytefile *file);
 
 #endif // BYTEFILE_H

@@ -77,14 +77,14 @@ enum IpAdvance {
 };
 
 struct {
-    char *file_name;
-    bytefile *file;
+    const char *file_name;
+    const bytefile *file;
     IpAdvance advance;
-    char *jump_target;
+    const char *jump_target;
 } interpreter;
 
 typedef struct frame {
-    char *return_ip;
+    const char *return_ip;
     bool is_closure;
     size_t *base;
     size_t args_count;
@@ -104,7 +104,7 @@ static inline void cstack_init() {
     __cstack_top->return_ip = NULL;
 }
 
-static inline frame *cstack_call(char *return_ip, size_t args_count, bool is_closure) {
+static inline frame *cstack_call(const char *return_ip, size_t args_count, bool is_closure) {
     ASSERT(__cstack_top > __cstack, 1, "Call stack overflow");
     ASSERT(__gc_stack_top + args_count < __gc_stack_bottom, 1, "Virtual stack underflow");
 
@@ -125,7 +125,7 @@ static inline void cstack_alloc(size_t locals_count) {
 /**
  * returns: return ip
  */
-static inline char *cstack_end() {
+static inline const char *cstack_end() {
     size_t return_value = vstack_pop();
     ASSERT(__cstack_top != __cstack_bottom, 1, "Call stack underflow");
     ASSERT(__cstack_top->base + __cstack_top->args_count <= __gc_stack_bottom, 1, "Virtual stack underflow");
@@ -179,7 +179,7 @@ extern "C" int Llength(void *p);
 extern "C" void *Lstring(void *p);
 
 extern "C" void *Bstring(void *p);
-extern "C" int LtagHash(char *s);
+extern "C" int LtagHash(const char *s);
 extern "C" void *Bsta(void *v, int i, void *x);
 extern "C" void *Belem(void *p, int i);
 extern "C" int Btag(void *d, int t, int n);
@@ -193,7 +193,7 @@ extern "C" int Barray_tag_patt(void *x);
 extern "C" int Bstring_tag_patt(void *x);
 extern "C" int Bsexp_tag_patt(void *x);
 
-extern "C" void Bmatch_failure(void *v, char *fname, int line, int col);
+extern "C" void Bmatch_failure(void *v, const char *fname, int line, int col);
 
 extern "C" void *alloc_array(int);
 extern "C" void *alloc_sexp(int);
@@ -252,15 +252,15 @@ struct InterpreterFunctor<Opcode_Const, int> {
 };
 
 template <>
-struct InterpreterFunctor<Opcode_String, char *> {
-    inline void operator()(char *ptr) {
+struct InterpreterFunctor<Opcode_String, const char *> {
+    inline void operator()(const char *ptr) {
         vstack_push((size_t)Bstring((void *)ptr));
     }
 };
 
 template <>
-struct InterpreterFunctor<Opcode_SExp, char *, int> {
-    inline void operator()(char *tag, int n) {
+struct InterpreterFunctor<Opcode_SExp, const char *, int> {
+    inline void operator()(const char *tag, int n) {
         vstack_push((size_t)BSexp(n, UNBOX(LtagHash(tag))));
     }
 };
@@ -288,7 +288,7 @@ struct InterpreterFunctor<Opcode_StA> {
 template <>
 struct InterpreterFunctor<Opcode_Jmp, int> {
     inline void operator()(int target) {
-        char *dst = interpreter.file->code_ptr + target;
+        const char *dst = interpreter.file->code_ptr + target;
         interpreter.advance = Jump;
         interpreter.jump_target = dst;
     }
@@ -346,7 +346,7 @@ struct InterpreterFunctor<Opcode_Elem> {
 template <>
 struct InterpreterFunctor<Opcode_CJmpZ, int> {
     inline void operator()(int target) {
-        char *dst = interpreter.file->code_ptr + target;
+        const char *dst = interpreter.file->code_ptr + target;
         if (UNBOX(vstack_pop()) == 0) {
             interpreter.advance = Jump;
             interpreter.jump_target = dst;
@@ -357,7 +357,7 @@ struct InterpreterFunctor<Opcode_CJmpZ, int> {
 template <>
 struct InterpreterFunctor<Opcode_CJmpNZ, int> {
     inline void operator()(int target) {
-        char *dst = interpreter.file->code_ptr + target;
+        const char *dst = interpreter.file->code_ptr + target;
         if (UNBOX(vstack_pop()) != 0) {
             interpreter.advance = Jump;
             interpreter.jump_target = dst;
@@ -390,9 +390,9 @@ struct InterpreterFunctor<Opcode_Closure, int, ::std::vector<LocationEntry>> {
 };
 
 template <>
-struct InterpreterFunctor<Opcode_CallC, char *, int> {
-    inline void operator()(char *return_ip, int args_count) {
-        char *entry = interpreter.file->code_ptr + *(int *)vstack_kth_from_end(args_count);
+struct InterpreterFunctor<Opcode_CallC, const char *, int> {
+    inline void operator()(const char *return_ip, int args_count) {
+        const char *entry = interpreter.file->code_ptr + *(int *)vstack_kth_from_end(args_count);
         cstack_call(return_ip, args_count, true);
         interpreter.advance = Jump;
         interpreter.jump_target = entry;
@@ -400,9 +400,9 @@ struct InterpreterFunctor<Opcode_CallC, char *, int> {
 };
 
 template <>
-struct InterpreterFunctor<Opcode_Call, char *, int, int> {
-    inline void operator()(char *return_ip, int offset, int args_count) {
-        char *dst = interpreter.file->code_ptr + offset;
+struct InterpreterFunctor<Opcode_Call, const char *, int, int> {
+    inline void operator()(const char *return_ip, int offset, int args_count) {
+        const char *dst = interpreter.file->code_ptr + offset;
         cstack_call(return_ip, args_count, false);
         interpreter.advance = Jump;
         interpreter.jump_target = dst;
@@ -410,9 +410,9 @@ struct InterpreterFunctor<Opcode_Call, char *, int, int> {
 };
 
 template <>
-struct InterpreterFunctor<Opcode_Tag, char *, int> {
-    inline void operator()(char *s, int args) {
-        size_t tag = Btag((void *)vstack_pop(), LtagHash((char *)s), BOX(args));
+struct InterpreterFunctor<Opcode_Tag, const char *, int> {
+    inline void operator()(const char *s, int args) {
+        size_t tag = Btag((void *)vstack_pop(), LtagHash((const char *)s), BOX(args));
         vstack_push(tag);
     }
 };
@@ -567,7 +567,7 @@ struct InterpreterFunctor<opcode> {
 
 } // namespace
 
-void interprete(char *file_name, bytefile *file, char *ip) {
+void interprete(const char *file_name, const bytefile *file, const char *ip) {
     size_t line = 0;
 
     __init();

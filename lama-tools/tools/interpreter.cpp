@@ -6,6 +6,8 @@
 #include <chrono>
 #include <iostream>
 
+namespace {
+
 template <typename F>
 auto measure_time(F procedure) {
     auto begin = std::chrono::steady_clock::now();
@@ -14,20 +16,30 @@ auto measure_time(F procedure) {
     return std::chrono::duration<double, std::milli>(end - begin);
 }
 
-int main(int argc, char *argv[]) {
-    char *file_name = argv[1];
-    bytefile *file = read_file(file_name);
+} // namespace
 
-    char *ip = entrypoint(file);
-    ASSERT(ip != NULL, 1, "main symbol not found");
+int main(int argc, const char *argv[]) {
+    const char *file_name = argv[1];
+    const bytefile *file = read_file(file_name);
+
+    auto entrypoints = get_entrypoints(file);
 
     auto verification_time = measure_time([=]() {
-        verify_reachable_instructions(file, ip);
+        verify_reachable_instructions(file, entrypoints);
     });
     std::cerr << "Verification time: " << verification_time << std::endl;
 
-    auto interpretation_time = measure_time([=]() {
+    const char *ip = nullptr;
+    for (int i = 0; i < file->public_symbols_number; i++) {
+        if (strcmp(get_public_name(file, i), "main") == 0) {
+            ip = file->code_ptr + get_public_offset(file, i);
+            break;
+        }
+    }
+    ASSERT(ip != nullptr, 1, "main symbol not found");
+
+    auto execution_time = measure_time([=]() {
         interprete(file_name, file, ip);
     });
-    std::cerr << "Interpretation time: " << interpretation_time << std::endl;
+    std::cerr << "Execution time: " << execution_time << std::endl;
 }

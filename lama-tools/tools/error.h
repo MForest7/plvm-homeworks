@@ -20,6 +20,8 @@
 #define CERR(...)
 #endif // DEBUG_MODE
 
+#define SAFE_MODE
+
 #ifdef SAFE_MODE
 #define ASSERT(condition, code, ...)   \
     do {                               \

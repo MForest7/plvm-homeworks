@@ -4,7 +4,7 @@
 void *__start_custom_data;
 void *__stop_custom_data;
 
-bytefile *read_file(char *fname) {
+bytefile *read_file(const char *fname) {
     FILE *f = fopen(fname, "rb");
     long size;
     bytefile *file;
@@ -33,6 +33,15 @@ bytefile *read_file(char *fname) {
 
     fclose(f);
 
+    ASSERT(file->stringtab_size >= 0, 1, "Negative string section size");
+    ASSERT(file->public_symbols_number >= 0, 1, "Negative public symbols number");
+    ASSERT(file->global_area_size >= 0, 1, "Negative global area size");
+
+    int total_sections_size = file->stringtab_size + file->public_symbols_number * 2 * sizeof(int) + file->global_area_size * sizeof(int);
+
+    ASSERT(total_sections_size + sizeof(bytefile) <= file->size,
+           1, "Invalid sections layout");
+
     file->string_ptr = &file->buffer[file->public_symbols_number * 2 * sizeof(int)];
     file->public_ptr = (int *)file->buffer;
     file->code_ptr = &file->string_ptr[file->stringtab_size];
@@ -41,7 +50,7 @@ bytefile *read_file(char *fname) {
     return file;
 }
 
-char *get_string(bytefile *f, int pos) {
+const char *get_string(const bytefile *f, int pos) {
     ASSERT(pos >= 0, 1,
            "Negative string index %d",
            pos);
@@ -51,7 +60,7 @@ char *get_string(bytefile *f, int pos) {
     return &f->string_ptr[pos];
 }
 
-char *get_public_name(bytefile *f, int i) {
+const char *get_public_name(const bytefile *f, int i) {
     ASSERT(i >= 0, 1,
            "Negative public symbol index %d",
            i);
@@ -61,7 +70,7 @@ char *get_public_name(bytefile *f, int i) {
     return get_string(f, f->public_ptr[i * 2]);
 }
 
-int get_public_offset(bytefile *f, int i) {
+int get_public_offset(const bytefile *f, int i) {
     ASSERT(i >= 0, 1,
            "Negative public symbol index %d",
            i);
@@ -75,15 +84,14 @@ int get_public_offset(bytefile *f, int i) {
     return offset;
 }
 
-int get_code_size(bytefile *f) {
-    return f->size - (f->code_ptr - (char *)f);
+int get_code_size(const bytefile *f) {
+    return f->size - (f->code_ptr - (const char *)f);
 }
 
-char *entrypoint(bytefile *file) {
+std::vector<const char *> get_entrypoints(const bytefile *file) {
+    std::vector<const char *> public_symbol_offsets;
     for (int i = 0; i < file->public_symbols_number; i++) {
-        if (strcmp(get_public_name(file, i), "main") == 0) {
-            return (char *)file->code_ptr + get_public_offset(file, i);
-        }
+        // public_symbol_offsets.push_back(file->code_ptr + get_public_offset(file, i));
     }
-    return NULL;
+    return public_symbol_offsets;
 }

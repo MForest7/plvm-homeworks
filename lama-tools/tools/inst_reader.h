@@ -9,19 +9,19 @@
 
 class InstReader {
 public:
-    InstReader(bytefile *file) {
+    InstReader(const bytefile *file) {
         this->file = file;
     }
 
 private:
-    bytefile *file;
-    char *ip;
+    const bytefile *file;
+    const char *ip;
     size_t line;
 
     inline void assert_can_read(int bytes) {
         ASSERT(file->code_ptr <= ip, 1,
                "ip is out of code section");
-        ASSERT(ip + bytes <= (char *)file + file->size, 1,
+        ASSERT(ip + bytes <= (const char *)file + file->size, 1,
                "ip is out of code section");
     }
 
@@ -37,7 +37,7 @@ private:
         return *(int *)(ip - sizeof(int));
     }
 
-    inline char *read_string() {
+    inline const char *read_string() {
         return get_string(file, read_int());
     }
 
@@ -53,7 +53,7 @@ public:
      * Returns a pointer after the instruction.
      */
     template <template <unsigned char, typename...> typename Functor, typename... Args> //, template <unsigned char opcode, typename... Args> typename (Functor>
-    inline char *read_inst(char *inst_ptr, Args... args) {
+    inline const char *read_inst(const char *inst_ptr, Args... args) {
         ip = inst_ptr;
         unsigned char x = read_byte(),
                       h = (x & 0xF0) >> 4,
@@ -67,15 +67,15 @@ public:
         }
 
         case Opcode_String: {
-            char *value = read_string();
-            (Functor<SINGLE(Opcode_String), char *>{args...})(value);
+            const char *value = read_string();
+            (Functor<SINGLE(Opcode_String), const char *>{args...})(value);
             break;
         }
 
         case Opcode_SExp: {
-            char *sexp = read_string();
+            const char *sexp = read_string();
             int argc = read_int();
-            (Functor<SINGLE(Opcode_SExp), char *, int>{args...})(sexp, argc);
+            (Functor<SINGLE(Opcode_SExp), const char *, int>{args...})(sexp, argc);
             break;
         }
 
@@ -166,21 +166,21 @@ public:
 
         case Opcode_CallC: {
             int argc = read_int();
-            (Functor<SINGLE(Opcode_CallC), char *, int>{args...})(ip, argc);
+            (Functor<SINGLE(Opcode_CallC), const char *, int>{args...})(ip, argc);
             break;
         }
 
         case Opcode_Call: {
             int offset = read_int();
             int argc = read_int();
-            (Functor<SINGLE(Opcode_Call), char *, int, int>{args...})(ip, offset, argc);
+            (Functor<SINGLE(Opcode_Call), const char *, int, int>{args...})(ip, offset, argc);
             break;
         }
 
         case Opcode_Tag: {
-            char *tag = read_string();
+            const char *tag = read_string();
             int argc = read_int();
-            (Functor<SINGLE(Opcode_Tag), char *, int>{args...})(tag, argc);
+            (Functor<SINGLE(Opcode_Tag), const char *, int>{args...})(tag, argc);
             break;
         }
 
