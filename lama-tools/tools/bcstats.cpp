@@ -16,11 +16,6 @@ static inline std::vector<bool> mark_reachable_instructions(
     const bytefile *file,
     const std::vector<const char *> &entrypoints) {
 
-    std::cout << "File ptr: " << (long)file << std::endl;
-    std::cout << "Code ptr: " << (long)file->code_ptr << std::endl;
-    std::cout << "File size: " << file->size << std::endl;
-    std::cout << "Code size: " << get_code_size(file) << std::endl;
-
     std::queue<const char *> q;
     std::vector<bool> visited(get_code_size(file));
     for (const char *entry : entrypoints) {
@@ -40,7 +35,7 @@ static inline std::vector<bool> mark_reachable_instructions(
         for (const char *s : successors) {
             if (!visited[s - file->code_ptr]) {
                 visited[s - file->code_ptr] = true;
-                q.push((char *)s);
+                q.push(s);
             }
         }
     }
@@ -118,7 +113,7 @@ int main(int argc, const char *argv[]) {
 
     std::vector<ShortIdiomGroup> one_byte_idioms(1 << 8, {{nullptr, nullptr}, 0});
     std::vector<ShortIdiomGroup> two_byte_idioms(1 << 16, {{nullptr, nullptr}, 0});
-    std::vector<Idiom> idioms;
+    std::vector<Idiom> long_idioms;
 
     auto entrypoints = get_entrypoints(file);
 
@@ -144,7 +139,7 @@ int main(int argc, const char *argv[]) {
                 two_byte_idioms[index].idiom = {prev, next};
                 two_byte_idioms[index].count++;
             } else {
-                idioms.push_back(Idiom{prev, next});
+                long_idioms.push_back(Idiom{prev, next});
             }
         }
         if (next - ip == 1) {
@@ -152,19 +147,19 @@ int main(int argc, const char *argv[]) {
             one_byte_idioms[index].idiom = {ip, next};
             one_byte_idioms[index].count++;
         } else {
-            idioms.push_back(Idiom{ip, next});
+            long_idioms.push_back(Idiom{ip, next});
         }
 
         prev = jump[ip - code_begin] ? nullptr : ip;
         ip = next;
     }
 
-    std::sort(idioms.begin(), idioms.end(), [](const Idiom &fst, const Idiom &snd) {
+    std::sort(long_idioms.begin(), long_idioms.end(), [](const Idiom &fst, const Idiom &snd) {
         return compare_idioms(fst, snd) < 0;
     });
 
     std::vector<IdiomGroup> idiom_groups;
-    for (const Idiom &idiom : idioms) {
+    for (const Idiom &idiom : long_idioms) {
         if (idiom_groups.empty() || compare_idioms(idiom, *(idiom_groups.back().idiom)) != 0) {
             idiom_groups.push_back({&idiom, 1});
         } else {

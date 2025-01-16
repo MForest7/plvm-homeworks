@@ -25,7 +25,7 @@ struct ClosureEntry {
  * Set parameter `capture` to a non-negative integer to verify closure.
  * Returns minimal possible number of arguments in the virtual stack before the call.
  */
-int verify_function(const bytefile *file, const char *begin, int captured = -1) {
+static inline int verify_function(const bytefile *file, const char *begin, int captured = -1) {
     std::vector<int> jumps;
     StackLayout layout{
         .globals = file->global_area_size,
@@ -101,7 +101,7 @@ struct GetCallOffset<Opcode_Call, char *, int, int> {
     }
 };
 
-void verify_calls(
+static inline void verify_calls(
     const bytefile *file,
     const char *begin,
     const std::unordered_map<int, int> &min_args_count) {

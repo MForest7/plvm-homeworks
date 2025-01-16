@@ -91,7 +91,7 @@ int get_code_size(const bytefile *f) {
 std::vector<const char *> get_entrypoints(const bytefile *file) {
     std::vector<const char *> public_symbol_offsets;
     for (int i = 0; i < file->public_symbols_number; i++) {
-        // public_symbol_offsets.push_back(file->code_ptr + get_public_offset(file, i));
+        public_symbol_offsets.push_back(file->code_ptr + get_public_offset(file, i));
     }
     return public_symbol_offsets;
 }

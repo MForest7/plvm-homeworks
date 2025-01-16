@@ -52,12 +52,12 @@ struct SuccessorsFunctor<Opcode_CJmpZ, int> {
 };
 
 template <>
-struct SuccessorsFunctor<Opcode_Call, char *, int, int> {
+struct SuccessorsFunctor<Opcode_Call, const char *, int, int> {
     const char *code_ptr;
     const char *next;
     std::vector<const char *> *successors;
 
-    void operator()(char *, int target, int) {
+    void operator()(const char *, int target, int) {
         *successors = {code_ptr + target, next};
     }
 };
