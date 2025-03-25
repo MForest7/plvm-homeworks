@@ -270,12 +270,14 @@ static inline void delete_list(Node *list, Allocator<Node> *allocator) {
 constexpr int threads_num = 16;
 
 template <template <typename> typename Allocator>
-static inline void run_with_global_allocator(unsigned n, Allocator<Node> *allocator) {
+static inline void run_with_global_allocator(unsigned n, Allocator<Node> *allocator, bool auto_delete) {
     vector<jthread> threads;
     for (int i = 0; i < threads_num; i++) {
-        threads.emplace_back([n, allocator] {
+        threads.emplace_back([n, allocator, auto_delete] {
             auto list = create_list(n, allocator);
-            delete_list(list, allocator);
+            if (!auto_delete) {
+                delete_list(list, allocator);
+            }
             return;
         });
     }
@@ -296,12 +298,12 @@ static inline void run_with_local_allocators(unsigned n) {
 }
 
 template <template <typename> typename Allocator>
-static inline void test(unsigned n, Allocator<Node> *allocator) {
+static inline void test(unsigned n, Allocator<Node> *allocator, bool auto_delete) {
     struct rusage start, finish;
     get_usage(start);
 
     if (allocator != nullptr) {
-        run_with_global_allocator<Allocator>(n, allocator);
+        run_with_global_allocator<Allocator>(n, allocator, auto_delete);
         delete allocator;
     } else {
         run_with_local_allocators(n);
@@ -341,13 +343,13 @@ int main(const int argc, const char *argv[]) {
     }
 
     if (string(argv[1]) == "std::allocator") {
-        test(nodes_num, new std::allocator<Node>{});
+        test(nodes_num, new std::allocator<Node>{}, /* auto_delete */ false);
     } else if (string(argv[1]) == "LockedPoolAllocator") {
-        test(nodes_num, new LockedPoolAllocator<Node>(threads_num * nodes_num));
+        test(nodes_num, new LockedPoolAllocator<Node>(threads_num * nodes_num), /* auto_delete */ true);
     } else if (string(argv[1]) == "LockFreePoolAllocator") {
-        test(nodes_num, new LockFreePoolAllocator<Node>(threads_num * nodes_num));
+        test(nodes_num, new LockFreePoolAllocator<Node>(threads_num * nodes_num), /* auto_delete */ true);
     } else if (string(argv[1]) == "PoolAllocator") {
-        test<PoolAllocator>(nodes_num, nullptr);
+        test<PoolAllocator>(nodes_num, nullptr, /* auto_delete */ true);
     } else {
         std::cerr << "Unknown allocator: " << argv[1] << std::endl;
         std::cerr << "Available allocators:" << std::endl;

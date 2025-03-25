@@ -177,12 +177,14 @@ static inline void delete_list(Node *list, Allocator<Node> *allocator) {
 }
 
 template <template <typename> typename Allocator>
-static inline void test(unsigned n, Allocator<Node> *allocator) {
+static inline void test(unsigned n, Allocator<Node> *allocator, bool auto_delete) {
     struct rusage start, finish;
     get_usage(start);
 
     auto list = create_list(n, allocator);
-    delete_list(list, allocator);
+    if (!auto_delete) {
+        delete_list(list, allocator);
+    }
 
     delete allocator;
 
@@ -211,9 +213,9 @@ int main(const int argc, const char *argv[]) {
     sigaction(SIGSEGV, &action, NULL);
 
     cout << "With std::allocator:" << endl;
-    test(10000000, new std::allocator<Node>{});
+    test(10000000, new std::allocator<Node>{}, /* auto_delete */ false);
 
     cout << "With PoolAllocator:" << endl;
-    test(10000000, new PoolAllocator<Node>(10000000));
+    test(10000000, new PoolAllocator<Node>(10000000), /* auto_delete */ true);
     return EXIT_SUCCESS;
 }

@@ -8,13 +8,13 @@ cmake --build build
 
 ```
 With std::allocator:
-Time used:       366594 usec
+Time used:       355339 usec
 Memory used:     316227584 bytes
 Memory required: 160000000 bytes 
 Overhead: 49.4%
 With PoolAllocator:
-Time used:       11449 usec
-Memory used:     160088064 bytes
+Time used:       9755 usec
+Memory used:     160157696 bytes
 Memory required: 160000000 bytes 
 Overhead:  0.1%
 ```
