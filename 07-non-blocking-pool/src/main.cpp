@@ -5,6 +5,7 @@
 #include <list>
 #include <mutex>
 #include <new>
+#include <queue>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -28,13 +29,68 @@ struct MemPool {
     void *end;
     PoolKind kind;
     void *pool;
+    size_t register_index;
 };
 
-list<MemPool> known_pools;
+static constexpr size_t POOL_LIMIT = 100;
+MemPool *known_pools[POOL_LIMIT];
+size_t first_free_pool_slot;
+queue<size_t> free_pool_slots;
+
+enum PoolRegisterStatus {
+    IDLE,
+    UPDATING,
+    BAD_ALLOC
+};
+
+atomic_size_t pool_registry_status;
+atomic_flag bad_alloc_happened;
+
+static inline void pool_registry_spinlock(PoolRegisterStatus lock_status) {
+    size_t expected;
+    do {
+        expected = IDLE;
+    } while (pool_registry_status.compare_exchange_strong(expected, lock_status));
+}
+
+static inline void pool_registry_unlock() {
+    pool_registry_status.store(IDLE);
+}
+
+static inline void pool_registry_add(MemPool *pool) {
+    pool_registry_spinlock(UPDATING);
+
+    pool->register_index = first_free_pool_slot;
+    if (!free_pool_slots.empty()) {
+        pool->register_index = free_pool_slots.front();
+        free_pool_slots.pop();
+    } else if (first_free_pool_slot == POOL_LIMIT) {
+        throw runtime_error("No free slots in pool registry");
+    } else {
+        first_free_pool_slot++;
+    }
+
+    known_pools[pool->register_index] = pool;
+
+    pool_registry_unlock();
+}
+
+static inline void pool_registry_remove(MemPool *pool) {
+    pool_registry_spinlock(UPDATING);
+
+    free_pool_slots.push(pool->register_index);
+    known_pools[pool->register_index] = nullptr;
+
+    pool_registry_unlock();
+}
 
 void segv_handler(int signo, siginfo_t *info, void *extra) {
+    bad_alloc_happened.test_and_set();
+    pool_registry_spinlock(BAD_ALLOC);
+
     auto failed_ptr = info->si_addr;
-    for (const MemPool &entry : known_pools) {
+    for (size_t i = 0; i < POOL_LIMIT; i++) {
+        const MemPool &entry = *known_pools[i];
         if (entry.begin <= failed_ptr && failed_ptr < entry.end) {
             switch (entry.kind) {
             case SIMPLE:
@@ -55,27 +111,30 @@ void segv_handler(int signo, siginfo_t *info, void *extra) {
 
 template <typename Object>
 class PoolAllocator {
-    void *allocate_begin;
-    void *allocate_end;
+    MemPool pool;
     void *first_free;
 
 public:
     PoolAllocator(size_t capacity) {
+        pool.pool = this;
+        pool.kind = SIMPLE;
+
         size_t page_size = sysconf(_SC_PAGE_SIZE);
         size_t protected_pages = (sizeof(Object) + page_size - 1) / page_size;
         size_t pool_size = page_size * protected_pages + capacity * sizeof(Object);
 
-        allocate_end = mmap(nullptr, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        pool.begin = mmap(nullptr, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
 
-        if (allocate_end == MAP_FAILED) {
+        if (pool.begin == MAP_FAILED) {
             throw std::bad_alloc();
         }
 
-        mprotect(allocate_end, page_size * protected_pages, PROT_NONE);
+        mprotect(pool.begin, page_size * protected_pages, PROT_NONE);
 
-        allocate_begin = allocate_end + pool_size;
-        known_pools.emplace_back(allocate_end, allocate_begin, SIMPLE, this);
-        first_free = allocate_begin;
+        pool.end = pool.begin + pool_size;
+        first_free = pool.end;
+
+        pool_registry_add(&pool);
     }
 
     Object *allocate(size_t n) {
@@ -85,36 +144,38 @@ public:
     void deallocate(Object *ptr, size_t n) {}
 
     ~PoolAllocator() {
-        auto register_entry = find_if(known_pools.begin(), known_pools.end(), [this](const MemPool &entry) { return entry.pool == this; });
-        known_pools.erase(register_entry);
-        munmap(allocate_end, (size_t)allocate_begin - (size_t)allocate_end);
+        pool_registry_remove(&pool);
+        munmap(pool.begin, (size_t)pool.end - (size_t)pool.begin);
     }
 };
 
 template <typename Object>
 class LockedPoolAllocator {
-    void *allocate_begin;
-    void *allocate_end;
+    MemPool pool;
     void *first_free;
     mutex lock;
 
 public:
     LockedPoolAllocator(size_t capacity) {
+        pool.pool = this;
+        pool.kind = LOCKED;
+
         size_t page_size = sysconf(_SC_PAGE_SIZE);
         size_t protected_pages = (sizeof(Object) + page_size - 1) / page_size;
         size_t pool_size = page_size * protected_pages + capacity * sizeof(Object);
 
-        allocate_end = mmap(nullptr, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        pool.begin = mmap(nullptr, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
 
-        if (allocate_end == MAP_FAILED) {
+        if (pool.begin == MAP_FAILED) {
             throw std::bad_alloc();
         }
 
-        mprotect(allocate_end, page_size * protected_pages, PROT_NONE);
+        mprotect(pool.begin, page_size * protected_pages, PROT_NONE);
 
-        allocate_begin = allocate_end + pool_size;
-        known_pools.emplace_back(allocate_end, allocate_begin, LOCKED, this);
-        first_free = allocate_begin;
+        pool.end = pool.begin + pool_size;
+        first_free = pool.end;
+
+        pool_registry_add(&pool);
     }
 
     Object *allocate(size_t n) {
@@ -127,48 +188,50 @@ public:
     void deallocate(Object *ptr, size_t n) {}
 
     ~LockedPoolAllocator() {
-        auto register_entry = find_if(known_pools.begin(), known_pools.end(), [this](const MemPool &entry) { return entry.pool == this; });
-        known_pools.erase(register_entry);
-        munmap(allocate_end, (size_t)allocate_begin - (size_t)allocate_end);
+        pool_registry_remove(&pool);
+        munmap(pool.begin, (size_t)pool.end - (size_t)pool.begin);
     }
 };
 
 template <typename Object>
 class LockFreePoolAllocator {
-    void *allocate_begin;
-    void *allocate_end;
+    MemPool pool;
     atomic_uint64_t first_free;
 
 public:
     LockFreePoolAllocator(size_t capacity) {
+        pool.pool = this;
+        pool.kind = LOCK_FREE;
+
         size_t page_size = sysconf(_SC_PAGE_SIZE);
         size_t protected_pages = (sizeof(Object) + page_size - 1) / page_size;
         size_t pool_size = page_size * protected_pages + capacity * sizeof(Object);
 
-        allocate_end = mmap(nullptr, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        pool.begin = mmap(nullptr, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
 
-        if (allocate_end == MAP_FAILED) {
+        if (pool.begin == MAP_FAILED) {
             throw std::bad_alloc();
         }
 
-        mprotect(allocate_end, page_size * protected_pages, PROT_NONE);
+        mprotect(pool.begin, page_size * protected_pages, PROT_NONE);
 
-        allocate_begin = allocate_end + pool_size;
-        known_pools.emplace_back(allocate_end, allocate_begin, LOCK_FREE, this);
-        first_free = reinterpret_cast<uint64_t>(allocate_begin);
+        pool.end = pool.begin + pool_size;
+        first_free = reinterpret_cast<uint64_t>(pool.end);
+
+        pool_registry_add(&pool);
     }
 
     Object *allocate(size_t n) {
-        Object *begin = reinterpret_cast<Object *>(first_free.fetch_sub(sizeof(Object)));
+        Object *begin = reinterpret_cast<Object *>(
+            first_free.fetch_sub(sizeof(Object), memory_order_relaxed));
         return begin - 1;
     }
 
     void deallocate(Object *ptr, size_t n) {}
 
     ~LockFreePoolAllocator() {
-        auto register_entry = find_if(known_pools.begin(), known_pools.end(), [this](const MemPool &entry) { return entry.pool == this; });
-        known_pools.erase(register_entry);
-        munmap(allocate_end, (size_t)allocate_begin - (size_t)allocate_end);
+        pool_registry_remove(&pool);
+        munmap(pool.begin, (size_t)pool.end - (size_t)pool.begin);
     }
 };
 
