@@ -28,80 +28,60 @@ struct MemPool {
     void *begin;
     void *end;
     PoolKind kind;
-    void *pool;
     size_t register_index;
 };
 
 static constexpr size_t POOL_LIMIT = 100;
-MemPool *known_pools[POOL_LIMIT];
-size_t first_free_pool_slot;
-queue<size_t> free_pool_slots;
 
-enum PoolRegisterStatus {
-    IDLE,
-    UPDATING,
-    BAD_ALLOC
-};
+struct {
+    atomic<MemPool *> known_pools[POOL_LIMIT];
 
-atomic_size_t pool_registry_status;
-atomic_flag bad_alloc_happened;
+    enum PoolRegisterStatus {
+        IDLE,
+        UPDATING,
+        BAD_ALLOC
+    };
 
-static inline void pool_registry_spinlock(PoolRegisterStatus lock_status) {
-    size_t expected;
-    do {
-        expected = IDLE;
-    } while (pool_registry_status.compare_exchange_strong(expected, lock_status));
-}
+    atomic_size_t status;
 
-static inline void pool_registry_unlock() {
-    pool_registry_status.store(IDLE);
-}
-
-static inline void pool_registry_add(MemPool *pool) {
-    pool_registry_spinlock(UPDATING);
-
-    pool->register_index = first_free_pool_slot;
-    if (!free_pool_slots.empty()) {
-        pool->register_index = free_pool_slots.front();
-        free_pool_slots.pop();
-    } else if (first_free_pool_slot == POOL_LIMIT) {
-        throw runtime_error("No free slots in pool registry");
-    } else {
-        first_free_pool_slot++;
+    inline bool add(MemPool *pool) {
+        for (size_t slot = 0; slot < POOL_LIMIT; slot++) {
+            MemPool *expected = nullptr;
+            if (known_pools[slot].compare_exchange_strong(expected, pool, memory_order_relaxed)) {
+                pool->register_index = slot;
+                return true;
+            }
+        }
+        return false;
     }
 
-    known_pools[pool->register_index] = pool;
+    inline void remove(MemPool *pool) {
+        known_pools[pool->register_index].store(nullptr, memory_order_relaxed);
+    }
 
-    pool_registry_unlock();
-}
-
-static inline void pool_registry_remove(MemPool *pool) {
-    pool_registry_spinlock(UPDATING);
-
-    free_pool_slots.push(pool->register_index);
-    known_pools[pool->register_index] = nullptr;
-
-    pool_registry_unlock();
-}
+} pool_registry;
 
 void segv_handler(int signo, siginfo_t *info, void *extra) {
-    bad_alloc_happened.test_and_set();
-    pool_registry_spinlock(BAD_ALLOC);
-
     auto failed_ptr = info->si_addr;
     for (size_t i = 0; i < POOL_LIMIT; i++) {
-        const MemPool &entry = *known_pools[i];
+        const MemPool &entry = *pool_registry.known_pools[i];
         if (entry.begin <= failed_ptr && failed_ptr < entry.end) {
             switch (entry.kind) {
-            case SIMPLE:
-                write(2, "Bad alloc in PoolAllocator\n", 28);
+            case SIMPLE: {
+                constexpr const char message[] = "Bad alloc in PoolAllocator\n";
+                write(2, message, sizeof(message));
                 break;
-            case LOCKED:
-                write(2, "Bad alloc in LockedPoolAllocator\n", 34);
+            }
+            case LOCKED: {
+                constexpr const char message[] = "Bad alloc in LockedPoolAllocator\n";
+                write(2, message, sizeof(message));
                 break;
-            case LOCK_FREE:
-                write(2, "Bad alloc in LockFreePoolAllocator\n", 36);
+            }
+            case LOCK_FREE: {
+                constexpr const char message[] = "Bad alloc in LockFreePoolAllocator\n";
+                write(2, message, sizeof(message));
                 break;
+            }
             }
             exit(3);
         }
@@ -116,7 +96,6 @@ class PoolAllocator {
 
 public:
     PoolAllocator(size_t capacity) {
-        pool.pool = this;
         pool.kind = SIMPLE;
 
         size_t page_size = sysconf(_SC_PAGE_SIZE);
@@ -134,7 +113,9 @@ public:
         pool.end = pool.begin + pool_size;
         first_free = pool.end;
 
-        pool_registry_add(&pool);
+        if (!pool_registry.add(&pool)) {
+            throw runtime_error("No free pool slot");
+        }
     }
 
     Object *allocate(size_t n) {
@@ -144,7 +125,7 @@ public:
     void deallocate(Object *ptr, size_t n) {}
 
     ~PoolAllocator() {
-        pool_registry_remove(&pool);
+        pool_registry.remove(&pool);
         munmap(pool.begin, (size_t)pool.end - (size_t)pool.begin);
     }
 };
@@ -157,7 +138,6 @@ class LockedPoolAllocator {
 
 public:
     LockedPoolAllocator(size_t capacity) {
-        pool.pool = this;
         pool.kind = LOCKED;
 
         size_t page_size = sysconf(_SC_PAGE_SIZE);
@@ -175,7 +155,9 @@ public:
         pool.end = pool.begin + pool_size;
         first_free = pool.end;
 
-        pool_registry_add(&pool);
+        if (!pool_registry.add(&pool)) {
+            throw runtime_error("No free pool slot");
+        }
     }
 
     Object *allocate(size_t n) {
@@ -188,7 +170,7 @@ public:
     void deallocate(Object *ptr, size_t n) {}
 
     ~LockedPoolAllocator() {
-        pool_registry_remove(&pool);
+        pool_registry.remove(&pool);
         munmap(pool.begin, (size_t)pool.end - (size_t)pool.begin);
     }
 };
@@ -200,7 +182,6 @@ class LockFreePoolAllocator {
 
 public:
     LockFreePoolAllocator(size_t capacity) {
-        pool.pool = this;
         pool.kind = LOCK_FREE;
 
         size_t page_size = sysconf(_SC_PAGE_SIZE);
@@ -218,7 +199,9 @@ public:
         pool.end = pool.begin + pool_size;
         first_free = reinterpret_cast<uint64_t>(pool.end);
 
-        pool_registry_add(&pool);
+        if (!pool_registry.add(&pool)) {
+            throw runtime_error("No free pool slot");
+        }
     }
 
     Object *allocate(size_t n) {
@@ -230,7 +213,7 @@ public:
     void deallocate(Object *ptr, size_t n) {}
 
     ~LockFreePoolAllocator() {
-        pool_registry_remove(&pool);
+        pool_registry.remove(&pool);
         munmap(pool.begin, (size_t)pool.end - (size_t)pool.begin);
     }
 };
