@@ -10,32 +10,32 @@ make -C build
 
 ### std::allocator
 ```
-Time used:       19657500 usec
-Memory used:     5123436544 bytes
+Time used:       14343302 usec
+Memory used:     5123543040 bytes
 Memory required: 2560000000 bytes 
 Overhead: 50.0%
 ```
 
 ### Глобальный пул под мьютексом
 ```
-Time used:       49676150 usec
-Memory used:     2563346432 bytes
+Time used:       20395554 usec
+Memory used:     2563317760 bytes
 Memory required: 2560000000 bytes 
 Overhead:  0.1%
 ```
 
 ### Глобальный неблокирующий пул
 ```
-Time used:       47138368 usec
-Memory used:     2563317760 bytes
+Time used:       23539764 usec
+Memory used:     2563260416 bytes
 Memory required: 2560000000 bytes 
 Overhead:  0.1%
 ```
 
 ### Локальные в потоках пулы
 ```
-Time used:       1383748 usec
-Memory used:     1493196800 bytes
+Time used:       1247280 usec
+Memory used:     1877663744 bytes
 Memory required: 2560000000 bytes 
 Overhead:  0.0%
 ```
