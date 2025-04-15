@@ -57,40 +57,42 @@ public:
     std::mutex worker_mutex;
     std::condition_variable worker_cv;
 
-    std::mutex receiver_mutex;
     std::condition_variable receiver_cv;
 
     void *parallelMemcpy(void *dst, const void *src, size_t size) {
-        size_t block_size = std::max<size_t>(1024, (size + threads.size() - 1) / threads.size());
+        size_t block_size = std::max<size_t>(1024, (size + threads.size()) / (threads.size() + 1));
         size_t tasks_num = (size + block_size - 1) / block_size;
 
         std::unique_lock lock(worker_mutex);
 
-        std::atomic_size_t waiting_for = tasks_num;
-        for (size_t i = 0; i < tasks_num; i++) {
-            void *task_dst = dst + block_size * i;
-            const void *task_src = src + block_size * i;
+        std::atomic_size_t waiting_for = tasks_num - 1;
+        for (size_t i = 0; i + 1 < tasks_num; i++) {
+            void *task_dst = reinterpret_cast<uint8_t *>(dst) + block_size * i;
+            const void *task_src = reinterpret_cast<const uint8_t *>(src) + block_size * i;
             size_t task_size = std::min(size - i * block_size, block_size);
-            tasks.push([task_dst, task_src, task_size, i, this, &waiting_for] {
+            tasks.push([task_dst, task_src, task_size, this, &waiting_for] {
                 memcpy(task_dst, task_src, task_size);
                 size_t rem = waiting_for.fetch_sub(1);
-                {
-                    std::unique_lock lock(receiver_mutex);
-                    std::cout << "task " << i << " ends, remaining " << rem - 1 << std::endl;
+                if (rem - 1 == 0) {
+                    receiver_cv.notify_one();
                 }
             });
         }
 
-        worker_cv.notify_all();
-        /*{
-            std::cout << "wait..." << std::endl;
-        }*/
-        receiver_cv.wait(lock, [&waiting_for] {
-            size_t rem = waiting_for.load();
-            // std::cout << "remaining " << rem << std::endl;
-            return rem == 0;
-        });
-        // std::cout << "return!!!" << std::endl;
+        {
+            void *task_dst = reinterpret_cast<uint8_t *>(dst) + block_size * (tasks_num - 1);
+            const void *task_src = reinterpret_cast<const uint8_t *>(src) + block_size * (tasks_num - 1);
+            size_t task_size = std::min(size - (tasks_num - 1) * block_size, block_size);
+            memcpy(task_dst, task_src, task_size);
+        }
+
+        if (tasks_num > 1) {
+            worker_cv.notify_all();
+            receiver_cv.wait(lock, [&waiting_for] {
+                size_t rem = waiting_for.load();
+                return rem == 0;
+            });
+        }
         return dst;
     }
 
@@ -100,32 +102,10 @@ public:
     }
 };
 
-void *parallelMemcpy(void *dst, const void *src, size_t size, size_t threads_num) {
-    std::vector<std::jthread> threads;
-    size_t block_size = std::max<size_t>(1024, (size + threads_num) / threads_num);
-    size_t tasks_num = (size + block_size - 1) / block_size;
+void run_with_n_threads(size_t threads_num) {
+    ThreadPool thread_pool(threads_num);
 
-    for (size_t i = 0; i < tasks_num; i++) {
-        void *task_dst = dst + block_size * i;
-        const void *task_src = src + block_size * i;
-        size_t task_size = std::min(size - i * block_size, block_size);
-        threads.emplace_back([task_dst, task_src, task_size] {
-            memcpy(task_dst, task_src, task_size);
-        });
-    }
-    return dst;
-}
-
-int main(const int argc, const char *argv[]) {
-    if (argc < 1) {
-        std::cerr << "Expected usage: ./build/parallel-memcpy <threads_num>" << std::endl;
-        return 1;
-    }
-    size_t threads_num = atoi(argv[1]);
-
-    ThreadPool thread_pool(atoi(argv[1]));
-
-    const size_t N = 1 << 28;
+    constexpr size_t N = 1 << 26;
     std::vector<int> src(N);
     for (size_t i = 0; i < N; i++) {
         src[i] = i;
@@ -133,23 +113,23 @@ int main(const int argc, const char *argv[]) {
 
     std::vector<int> dst(N, 0);
 
-    /*auto start = std::chrono::steady_clock::now();
-    parallelMemcpy(dst.data(), src.data(), N * sizeof(int), threads_num);
-    auto end = std::chrono::steady_clock::now();
-    double time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    thread_pool.parallelMemcpy(dst.data(), src.data(), N * sizeof(int));
     assert(memcmp(src.data(), dst.data(), N * sizeof(int)) == 0);
-    std::cout << time << " us" << std::endl
-
-    return 0;*/
 
     double total_time = 0;
-    size_t laps = 100;
+    constexpr size_t laps = 10;
     for (size_t i = 0; i < laps; i++) {
         auto start = std::chrono::steady_clock::now();
-        parallelMemcpy(dst.data(), src.data(), N * sizeof(int), threads_num);
+        thread_pool.parallelMemcpy(dst.data(), src.data(), N * sizeof(int));
         auto end = std::chrono::steady_clock::now();
         total_time += std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     }
 
-    std::cout << total_time / laps << " us" << std::endl;
+    std::cout << threads_num << " threads: " << total_time / laps << " us" << std::endl;
+}
+
+int main(const int argc, const char *argv[]) {
+    for (size_t threads_num = 0; threads_num <= 8; threads_num++) {
+        run_with_n_threads(threads_num);
+    }
 }
