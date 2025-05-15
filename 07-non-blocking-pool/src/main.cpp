@@ -133,6 +133,7 @@ public:
         size_t page_size = sysconf(_SC_PAGE_SIZE);
         size_t protected_pages = (sizeof(Object) + page_size - 1) / page_size;
         size_t pool_size = page_size * protected_pages + capacity * sizeof(Object);
+        pool_size = (pool_size + page_size - 1) & (~(page_size - 1));
 
         begin = reinterpret_cast<uint8_t *>(
             mmap(nullptr, pool_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0));
@@ -225,10 +226,10 @@ struct Node {
 };
 
 template <template <typename> typename Allocator = std::allocator>
-static inline Node *create_list(unsigned n, Allocator<Node> *allocator) {
+static inline Node *create_list(unsigned n, Allocator<Node> &allocator) {
     Node *list = nullptr;
     for (unsigned i = 0; i < n; i++) {
-        Node *node = allocator->allocate(1);
+        Node *node = allocator.allocate(1);
         *node = Node{list, i};
         list = node;
     }
@@ -236,53 +237,45 @@ static inline Node *create_list(unsigned n, Allocator<Node> *allocator) {
 }
 
 template <template <typename> typename Allocator = std::allocator>
-static inline void delete_list(Node *list, Allocator<Node> *allocator) {
+static inline void delete_list(Node *list, Allocator<Node> &allocator) {
     while (list) {
         Node *node = list;
         list = list->next;
-        allocator->deallocate(node, 1);
+        allocator.deallocate(node, 1);
     }
 }
 
 constexpr int threads_num = 16;
 
-template <template <typename> typename Allocator>
-static inline void run_with_global_allocator(unsigned n, Allocator<Node> *allocator, bool auto_delete) {
-    vector<jthread> threads;
-    for (int i = 0; i < threads_num; i++) {
-        threads.emplace_back([n, allocator, auto_delete] {
-            auto list = create_list(n, allocator);
-            if (!auto_delete) {
-                delete_list(list, allocator);
-            }
-            return;
-        });
-    }
-    threads.clear();
-}
-
-static inline void run_with_local_allocators(unsigned n) {
-    vector<jthread> threads;
-    for (int i = 0; i < threads_num; i++) {
-        threads.emplace_back([n] {
-            PoolAllocator<Node> allocator(n);
-            auto list = create_list(n, &allocator);
-            return;
-        });
-    }
-    threads.clear();
-}
-
-template <template <typename> typename Allocator>
-static inline void test(unsigned n, Allocator<Node> *allocator, bool auto_delete) {
+template <template <typename> typename Allocator, typename... Args>
+static inline void test(unsigned n, bool local, Args... args) {
     struct rusage start, finish;
     get_usage(start);
 
-    if (allocator != nullptr) {
-        run_with_global_allocator<Allocator>(n, allocator, auto_delete);
-        delete allocator;
+    if (local) {
+        vector<thread> threads;
+        for (int i = 0; i < threads_num; i++) {
+            threads.emplace_back([n, args...] {
+                Allocator<Node> allocator(args...);
+                auto list = create_list(n, allocator);
+                delete_list(list, allocator);
+            });
+        }
+        for (int i = 0; i < threads_num; i++) {
+            threads[i].join();
+        }
     } else {
-        run_with_local_allocators(n);
+        Allocator<Node> allocator(args...);
+        vector<thread> threads;
+        for (int i = 0; i < threads_num; i++) {
+            threads.emplace_back([n, &allocator] {
+                auto list = create_list(n, allocator);
+                delete_list(list, allocator);
+            });
+        }
+        for (int i = 0; i < threads_num; i++) {
+            threads[i].join();
+        }
     }
 
     get_usage(finish);
@@ -322,13 +315,13 @@ int main(const int argc, const char *argv[]) {
     }
 
     if (string(argv[1]) == "std::allocator") {
-        test(nodes_num, new std::allocator<Node>{}, /* auto_delete */ false);
+        test<std::allocator>(nodes_num, false);
     } else if (string(argv[1]) == "LockedPoolAllocator") {
-        test(nodes_num, new LockedPoolAllocator<Node>(threads_num * nodes_num), /* auto_delete */ true);
+        test<LockedPoolAllocator>(nodes_num, false, threads_num * nodes_num);
     } else if (string(argv[1]) == "LockFreePoolAllocator") {
-        test(nodes_num, new LockFreePoolAllocator<Node>(threads_num * nodes_num), /* auto_delete */ true);
+        test<LockFreePoolAllocator>(nodes_num, false, threads_num * nodes_num);
     } else if (string(argv[1]) == "PoolAllocator") {
-        test<PoolAllocator>(nodes_num, nullptr, /* auto_delete */ true);
+        test<PoolAllocator>(nodes_num, true, nodes_num);
     } else {
         std::cerr << "Unknown allocator: " << argv[1] << std::endl;
         std::cerr << "Available allocators:" << std::endl;
